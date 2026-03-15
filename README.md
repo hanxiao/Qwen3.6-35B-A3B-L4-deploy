@@ -19,18 +19,21 @@ Internet → nginx (:80/:443)
 gcloud compute instances create qwen35-serving-l4 \
   --project=$GCP_PROJECT \
   --zone=us-central1-a \
-  --machine-type=g2-standard-16 \
+  --machine-type=g2-standard-8 \
   --image=pytorch-2-7-cu128-ubuntu-2204-nvidia-570-v20260129 \
   --image-project=deeplearning-platform-release \
   --boot-disk-size=100GB \
   --boot-disk-type=pd-ssd \
   --maintenance-policy=TERMINATE \
+  --provisioning-model=SPOT \
+  --instance-termination-action=STOP \
   --tags=llama-server
 ```
 
-- **g2-standard-16**: 1x NVIDIA L4 (24GB VRAM), 16 vCPUs, 64GB RAM
+- **g2-standard-8**: 1x NVIDIA L4 (24GB VRAM), 8 vCPUs, 32GB RAM
+- **Spot instance**: ~60-70% cheaper than on-demand (~$0.26/hr vs $0.86/hr)
 - Deep Learning VM image: CUDA 12.8, NVIDIA driver 570 pre-installed
-- Cost: ~$0.86/hr (~$620/month)
+- Spot instances may be preempted; use `--instance-termination-action=STOP` to preserve disk
 
 ### 2. Firewall Rules
 
@@ -190,7 +193,15 @@ The L4 has 23,034 MiB (22.5 GB) total VRAM. The Q4_K_XL model weights take ~20.5
 - Decode: 7.0-8.3s for 400 tokens (~39 tok/s)
 - Total wall time: 641s for 80 turns
 
-**Important**: Use `--checkpoint-every-n-tokens 256` for best cache hit rates with hybrid models.
+**Ablation Study** (Snake game iterative coding, 10 turns to 32K context):
+
+| Config | Prefill Range | Decode tok/s | Cache Reprocess |
+|--------|--------------|--------------|-----------------|
+| patched template + checkpoint-256 | 249-3072ms | 56→49 | 0 times |
+| patched template, no checkpoint | 238-3041ms | 56→49 | 0 times |
+| default template, no checkpoint | 238-3621ms | 56→48 | 1 time (Turn 2 only) |
+
+**Conclusion**: The patched Jinja template (`--chat-template-file`) is the only meaningful fix. `--checkpoint-every-n-tokens 256` has no measurable impact. The default template causes one cache miss on Turn 2 (when the template strips the empty `</think>` tag from Turn 1), then self-corrects.
 
 ### 2. `response_format: json_object` Doesn't Work
 
