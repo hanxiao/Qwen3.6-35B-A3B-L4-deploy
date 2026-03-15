@@ -85,14 +85,16 @@ docker run -d --name llama-server --gpus all \
   ghcr.io/ggml-org/llama.cpp:server-cuda \
   --model /models/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf \
   --host 0.0.0.0 --port 8080 \
-  --ctx-size 32768 \
-  --parallel 4 \
+  --ctx-size 180224 \
+  --parallel 1 \
   --n-gpu-layers 999 \
   --flash-attn on \
   --jinja \
   --threads 8 \
   --chat-template-file /templates/chat_template.jinja \
   --checkpoint-every-n-tokens 256 \
+  --cache-type-k q4_0 \
+  --cache-type-v q4_0 \
   --chat-template-kwargs '{"enable_thinking": false}'
 
 # Open WebUI
@@ -138,8 +140,10 @@ Proxy: OFF (DNS only, gray cloud)
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| `--ctx-size` | 32768 | Max 32K on L4 24GB with Q4_K_XL. Higher OOMs. |
-| `--parallel` | 4 | 4 concurrent request slots. More slots = more VRAM per slot. |
+| `--ctx-size` | 180224 | ~176K context. Max achievable on L4 24GB with Q4_K_XL + KV cache quantization. |
+| `--parallel` | 1 | Single request slot (trade-off for longer context). |
+| `--cache-type-k` | q4_0 | Quantize KV cache keys to 4-bit (saves ~75% KV VRAM vs fp16). |
+| `--cache-type-v` | q4_0 | Quantize KV cache values to 4-bit. |
 | `--n-gpu-layers` | 999 | Offload all layers to GPU |
 | `--flash-attn` | on | Required for memory efficiency |
 | `--jinja` | - | Enables Jinja2 chat templates (required for Qwen3.5) |
@@ -150,19 +154,26 @@ Proxy: OFF (DNS only, gray cloud)
 
 ### VRAM Budget
 
-| Config | VRAM Usage | Notes |
-|--------|-----------|-------|
-| ctx=32768, parallel=1 | ~22.3 GB | Original config, near limit |
-| ctx=4096, parallel=4 | ~21.8 GB | Optimized for batch inference |
-| ctx=32768, parallel=4 | OOM | Don't try |
+The L4 has 22,383 MiB (~22 GB) usable VRAM. Model weights (Q4_K_XL) take ~20.7 GB, leaving ~1.7 GB for KV cache + compute buffers.
 
-### Context Length vs VRAM
+| Config | KV Cache | VRAM Status | Notes |
+|--------|----------|-------------|-------|
+| ctx=180K, parallel=1, KV q4_0 | 990 MB | OK | **Current config**. Max context with KV quantization. |
+| ctx=131K, parallel=1, KV q4_0 | 720 MB | OK | Conservative, more headroom. |
+| ctx=200K, parallel=1, KV q4_0 | ~1100 MB | OOM | Compute buffer exceeds remaining VRAM. |
+| ctx=262K, parallel=1, KV q4_0 | ~1440 MB | OOM | Would need smaller model weights. |
+| ctx=49K, parallel=1, KV fp16 | 960 MB | OK | Max without KV quantization. |
+| ctx=32K, parallel=4, KV fp16 | ~2560 MB | OOM | Original config, no longer used. |
+| ctx=32K, parallel=1, KV fp16 | 640 MB | OK | Safe fallback. |
 
-The L4 has 23,034 MiB (22.5 GB) total VRAM. The Q4_K_XL model weights take ~20.5 GB, leaving ~2 GB for KV cache.
+### KV Cache Quantization Trade-offs
 
-- **Max safe ctx-size**: 32768 with parallel=1
-- **For batch inference**: reduce ctx-size to 4096-8192, increase parallel to 4
-- Qwen3.5 supports up to 262K context, but L4 can only fit 32K
+Using `--cache-type-k q4_0 --cache-type-v q4_0` reduces KV cache VRAM by ~75% vs fp16, enabling much longer context. The trade-off:
+
+- **Short conversations (<32K)**: virtually no quality difference
+- **Long context (32K-128K)**: minor precision loss in long-range attention
+- **Very long context (128K+)**: may lose fine-grained details from early tokens; best for summarization, less ideal for needle-in-haystack retrieval
+- Alternative: `--cache-type-k q8_0 --cache-type-v q8_0` for better quality at ~50% savings (max ~131K on L4)
 
 ### Performance
 
@@ -297,7 +308,7 @@ def parse_json_list(content: str) -> list | None:
 | File size | 21 GB |
 | Architecture | Hybrid: 30× Gated DeltaNet + 10× Gated Attention (MoE, 256 experts, 8 active) |
 | Layer pattern | 10 × (3 × GDN-MoE + 1 × GA-MoE) |
-| Context | 262K native, 32K max on L4 |
+| Context | 262K native, 180K max on L4 (with KV q4_0 quantization) |
 | Active params | 3B (of 35B total) |
 | Vocab | 248,320 |
 
