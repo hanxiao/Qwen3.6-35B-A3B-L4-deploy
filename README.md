@@ -178,7 +178,19 @@ Using `--cache-type-k q4_0 --cache-type-v q4_0` reduces KV cache VRAM by ~75% vs
 
 ### Performance
 
-Measured 2026-03-23 with Uncensored Q4_K_M + mmproj, ctx 98K, KV q4_0, L4 GPU.
+Measured on NVIDIA L4 (24GB VRAM), llama.cpp `server-cuda`, KV cache q4_0, thinking disabled, single request slot.
+
+#### Qwen3.5-35B-A3B (MoE, Q4_K_M, 20GB) vs Qwen3.5-27B Dense (Q6_K, 21GB)
+
+| Metric | 35B-A3B (MoE) | 27B Dense | Ratio |
+|--------|---------------|-----------|-------|
+| Prefill (5K tokens) | 1,877 tok/s | 557 tok/s | **3.4x** |
+| Decode | 67 tok/s | 10 tok/s | **6.7x** |
+| TTFT (short prompt) | ~67 ms | ~235 ms | **3.5x** |
+
+The MoE variant activates only 3B parameters per token (of 35B total), while the 27B dense model runs all parameters. Despite similar GGUF file sizes (~20-21GB), the MoE architecture delivers 3-7x better throughput on L4 due to dramatically lower compute per token.
+
+#### Raw Timings (35B-A3B, ctx 98K)
 
 | Metric | Value |
 |--------|-------|
