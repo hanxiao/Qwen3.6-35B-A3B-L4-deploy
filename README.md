@@ -197,6 +197,22 @@ The MoE variant activates only 3B parameters per token (of 35B total), while the
 | Prefill | ~1980 tok/s (2316 tok in 1.17s) |
 | Decode | 69.3 tok/s |
 
+### Reasoning Quality Comparison
+
+Tested with a multi-step math riddle (sheep problem requiring tracking state across 3 operations). Both models generated 2000 tokens.
+
+| Config | Time | Thinking | Result |
+|--------|------|----------|--------|
+| 35B-A3B OFF | 30.3s | - | ✅ Steps 1-2 correct, ❌ verbose, no clear final answer |
+| 35B-A3B ON | 30.3s | 6636 chars | ⚠️ Answer truncated (thinking consumed max_tokens) |
+| 27B Dense OFF | 200.4s | - | ✅ Steps 1-2 correct, ❌ verbose, no clear final answer |
+| 27B Dense ON | 200.4s | 6499 chars | ⚠️ Answer truncated (thinking consumed max_tokens) |
+
+**Findings:**
+- **No quality difference**: Both models produce nearly identical reasoning and get stuck on the same edge case (odd-number division)
+- **Speed advantage**: 35B-A3B is **6.6x faster** (30.3s vs 200.4s) for identical output quality
+- **Thinking mode**: Generates internal reasoning but causes answer truncation; thinking OFF is more reliable for complete answers
+
 ## Known Issues / Pitfalls
 
 ### 1. KV Cache for Hybrid/Recurrent Models
