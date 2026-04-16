@@ -1,14 +1,13 @@
 # Qwen3.6-35B-A3B on GCP L4 (24GB VRAM)
 
-Deploy Qwen3.6-35B-A3B ([Unsloth Dynamic 2.0 Q4_K_XL GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 20GB + 858MB mmproj) on a single NVIDIA L4 GPU with llama.cpp server, Open WebUI, and nginx reverse proxy. Multimodal capable via mmproj vision projector.
+Deploy Qwen3.6-35B-A3B ([Unsloth Dynamic 2.0 Q4_K_XL GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 20GB + 858MB mmproj) on a single NVIDIA L4 GPU with llama.cpp server. Multimodal capable via mmproj vision projector.
 
 ## Architecture
 
 ```
-Internet → nginx (:80/:443)
-              ├── /v1/*    → llama.cpp server (:8080)  [OpenAI-compatible API]
-              ├── /health  → llama.cpp server (:8080)
-              └── /*       → Open WebUI (:3000)         [Chat UI]
+llama.cpp server (:8080)  [OpenAI-compatible API]
+Open WebUI (:3000)        [Chat UI, optional]
+nginx (:80/:443)          [Reverse proxy, optional]
 ```
 
 ## Quick Start
@@ -109,7 +108,9 @@ docker run -d --name open-webui \
   ghcr.io/open-webui/open-webui:main
 ```
 
-### 5. nginx Reverse Proxy
+### 5. (Optional) nginx Reverse Proxy + Cloudflare
+
+Only needed if you want a custom domain with HTTPS. Skip this if you're accessing the API directly via `http://<INSTANCE_IP>:8080`.
 
 ```bash
 sudo apt install -y nginx
@@ -121,20 +122,11 @@ sudo nginx -t && sudo systemctl reload nginx
 For HTTPS with Cloudflare Origin cert:
 ```bash
 sudo mkdir -p /etc/nginx/ssl
-# Place your Cloudflare Origin cert + key:
 sudo cp cf-origin-cert.pem /etc/nginx/ssl/
 sudo cp cf-origin-key.pem /etc/nginx/ssl/
 ```
 
-### 6. DNS (Cloudflare)
-
-Create an A record pointing your domain to the instance's external IP:
-```
-Type: A
-Name: qwen-api (or your subdomain)
-Content: <INSTANCE_EXTERNAL_IP>
-Proxy: OFF (DNS only, gray cloud)
-```
+DNS: Create an A record pointing your domain to the instance's external IP (Proxy OFF).
 
 ## Parameters
 
