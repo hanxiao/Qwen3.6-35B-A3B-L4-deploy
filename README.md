@@ -1,6 +1,6 @@
 # Qwen3.6-35B-A3B on GCP L4 (24GB VRAM)
 
-Deploy Qwen3.6-35B-A3B (Unsloth Dynamic 2.0 Q4_K_XL GGUF, 20GB + 858MB mmproj) on a single NVIDIA L4 GPU with llama.cpp server, Open WebUI, and nginx reverse proxy. Multimodal capable via mmproj vision projector.
+Deploy Qwen3.6-35B-A3B ([Unsloth Dynamic 2.0 Q4_K_XL GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 20GB + 858MB mmproj) on a single NVIDIA L4 GPU with llama.cpp server, Open WebUI, and nginx reverse proxy. Multimodal capable via mmproj vision projector.
 
 ## Architecture
 
