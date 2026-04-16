@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-shot setup for Qwen3.5-35B-A3B on GCP L4
+# One-shot setup for Qwen3.6-35B-A3B on GCP L4
 # Run on the GCP instance after creation
 set -e
 
@@ -9,10 +9,11 @@ sudo apt-get install -y -qq nginx docker-compose-plugin
 
 echo "=== Downloading model ==="
 mkdir -p ~/models
-if [ ! -f ~/models/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf ]; then
+if [ ! -f ~/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf ]; then
     pip install -q huggingface-hub
-    huggingface-cli download unsloth/Qwen3.5-35B-A3B-GGUF \
-        Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf \
+    huggingface-cli download unsloth/Qwen3.6-35B-A3B-GGUF \
+        Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+        mmproj-F16.gguf \
         --local-dir ~/models
 else
     echo "Model already downloaded"

@@ -88,27 +88,19 @@
 {{- '<|im_start|>' + message.role + '\n' + content + '<|im_end|>' + '\n' }}
 {%- elif message.role == "assistant" %}
 {%- set reasoning_content = '' %}
-{%- set has_real_thought = false %}
-{%- if message.reasoning_content is defined and message.reasoning_content is string %}
+{%- if message.reasoning_content is string %}
 {%- set reasoning_content = message.reasoning_content %}
-{%- if reasoning_content|trim|length > 0 %}
-{%- set has_real_thought = true %}
-{%- endif %}
 {%- else %}
 {%- if '</think>' in content %}
-{%- set reasoning_content = content.split('</think>')[0].split('<think>')[-1] %}
-{%- if reasoning_content|trim|length > 0 %}
-{%- set has_real_thought = true %}
+{%- set reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') %}
 {%- set content = content.split('</think>')[-1].lstrip('\n') %}
 {%- endif %}
 {%- endif %}
-{%- endif %}
-{%- if has_real_thought %}
-{%- if loop.index0 > ns.last_query_index %}
-{{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content|trim + '\n</think>\n\n' + content }}
-{%- else %}
-{{- '<|im_start|>' + message.role + '\n' + content }}
-{%- endif %}
+{%- set reasoning_content = reasoning_content|trim %}
+{%- if (preserve_thinking is defined and preserve_thinking is true) or (loop.index0 > ns.last_query_index) %}
+{{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content + '\n</think>\n\n' + content }}
+{%- elif reasoning_content|length == 0 %}
+{{- '<|im_start|>' + message.role + '\n<think>\n\n</think>\n\n' + content }}
 {%- else %}
 {{- '<|im_start|>' + message.role + '\n' + content }}
 {%- endif %}
@@ -126,11 +118,10 @@
 {%- else %}
 {{- '\n<tool_call>\n<function=' + tool_call.name + '>\n' }}
 {%- endif %}
-{%- if tool_call.arguments is mapping %}
-{%- for args_name in tool_call.arguments %}
-{%- set args_value = tool_call.arguments[args_name] %}
+{%- if tool_call.arguments is defined %}
+{%- for args_name, args_value in tool_call.arguments|items %}
 {{- '<parameter=' + args_name + '>\n' }}
-{%- set args_value = args_value | tojson | safe if args_value is mapping or (args_value is sequence and args_value is not string) else args_value | string %}
+{%- set args_value = args_value | string if args_value is string else args_value | tojson | safe %}
 {{- args_value }}
 {{- '\n</parameter>\n' }}
 {%- endfor %}

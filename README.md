@@ -1,6 +1,6 @@
-# Qwen3.5-35B-A3B on GCP L4 (24GB VRAM)
+# Qwen3.6-35B-A3B on GCP L4 (24GB VRAM)
 
-Deploy Qwen3.5-35B-A3B Uncensored (HauhauCS Aggressive Q4_K_M GGUF, 20GB + 858MB mmproj) on a single NVIDIA L4 GPU with llama.cpp server, Open WebUI, and nginx reverse proxy. Multimodal capable via mmproj vision projector.
+Deploy Qwen3.6-35B-A3B (Unsloth Dynamic 2.0 Q4_K_XL GGUF, 20GB + 858MB mmproj) on a single NVIDIA L4 GPU with llama.cpp server, Open WebUI, and nginx reverse proxy. Multimodal capable via mmproj vision projector.
 
 ## Architecture
 
@@ -57,10 +57,10 @@ gcloud compute firewall-rules create allow-llama-https \
 gcloud compute ssh qwen35-serving-l4 --project=$GCP_PROJECT --zone=us-central1-a
 
 mkdir -p ~/models
-# HauhauCS Aggressive Q4_K_M GGUF (~20GB) + mmproj (~858MB)
-huggingface-cli download HauhauCS/Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-GGUF \
-  Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf \
-  mmproj-Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf \
+# Unsloth Dynamic 2.0 Q4_K_XL GGUF (~20GB) + mmproj (~858MB)
+huggingface-cli download unsloth/Qwen3.6-35B-A3B-GGUF \
+  Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+  mmproj-F16.gguf \
   --local-dir ~/models
 ```
 
@@ -84,8 +84,8 @@ docker run -d --name llama-server --gpus all \
   -p 8080:8080 \
   --restart unless-stopped \
   ghcr.io/ggml-org/llama.cpp:server-cuda \
-  --model /models/Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf \
-  --mmproj /models/mmproj-Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf \
+  --model /models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
+  --mmproj /models/mmproj-F16.gguf \
   --host 0.0.0.0 --port 8080 \
   --ctx-size 98304 \
   --parallel 1 \
@@ -142,22 +142,22 @@ Proxy: OFF (DNS only, gray cloud)
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| `--ctx-size` | 98304 | ~96K context. Current config on L4 24GB with Q4_K_M + mmproj + KV cache quantization. |
-| `--mmproj` | mmproj-...-f16.gguf | Multimodal vision projector (858MB). Enables image understanding. |
+| `--ctx-size` | 98304 | ~96K context. Current config on L4 24GB with Q4_K_XL + mmproj + KV cache quantization. |
+| `--mmproj` | mmproj-F16.gguf | Multimodal vision projector (858MB). Enables image understanding. |
 | `--parallel` | 1 | Single request slot (trade-off for longer context). |
 | `--cache-type-k` | q4_0 | Quantize KV cache keys to 4-bit (saves ~75% KV VRAM vs fp16). |
 | `--cache-type-v` | q4_0 | Quantize KV cache values to 4-bit. |
 | `--n-gpu-layers` | 999 | Offload all layers to GPU |
 | `--flash-attn` | on | Required for memory efficiency |
-| `--jinja` | - | Enables Jinja2 chat templates (required for Qwen3.5) |
+| `--jinja` | - | Enables Jinja2 chat templates (required for Qwen3.6) |
 | `--threads` | 8 | CPU threads for prompt processing |
-| `--chat-template-file` | `/templates/chat_template.jinja` | Fixed Jinja template that preserves empty think blocks in non-thinking mode (see issue #7 below) |
+| `--chat-template-file` | `/templates/chat_template.jinja` | Patched Jinja template that preserves empty think blocks in non-thinking mode (see issue #7 below) |
 | `--checkpoint-every-n-tokens` | 256 | Create more frequent checkpoints during prefill to reduce reprocessing distance for hybrid/recurrent models (see issue #1 below) |
 | `--chat-template-kwargs` | `{"enable_thinking": false}` | Disable thinking mode by default (saves tokens) |
 
 ### VRAM Budget
 
-The L4 has 22,383 MiB (~22 GB) usable VRAM. Model weights (Q4_K_M, 20GB) + mmproj (858MB) take ~20.8 GB, leaving ~1.2 GB for KV cache + compute buffers.
+The L4 has 22,383 MiB (~22 GB) usable VRAM. Model weights (Q4_K_XL, ~20GB) + mmproj (858MB) take ~20.8 GB, leaving ~1.2 GB for KV cache + compute buffers.
 
 | Config | KV Cache | VRAM Status | Notes |
 |--------|----------|-------------|-------|
@@ -185,6 +185,8 @@ Measured on NVIDIA L4 (24GB VRAM), llama.cpp `server-cuda`, KV cache q4_0, `--ub
 
 #### Qwen3.5-35B-A3B (MoE, Q4_K_M, 20GB) vs Qwen3.5-27B Dense (Q6_K, 21GB)
 
+Note: benchmarks below were measured with Qwen3.5. Qwen3.6 uses identical architecture so performance should be the same or better.
+
 ##### Overview
 
 | Metric | 35B-A3B (MoE) | 27B Dense | Ratio |
@@ -210,7 +212,7 @@ Measured on NVIDIA L4 (24GB VRAM), llama.cpp `server-cuda`, KV cache q4_0, `--ub
 - **Prefill**: 35B-A3B is **3.7x faster** (1,781 vs 486 tok/s at 5K tokens)
 - **Context**: 35B-A3B supports 256K (model native max) vs 27B Dense at 71K
 - **Long context**: 35B-A3B handles 200K tokens; decode slows to 24 tok/s (still 3x faster than 27B at 66K)
-- **Quality**: No measurable difference on reasoning tasks (both Qwen3.5 family)
+- **Quality**: No measurable difference on reasoning tasks (both Qwen3 family)
 
 ##### Why the difference
 
@@ -223,9 +225,9 @@ Measured on NVIDIA L4 (24GB VRAM), llama.cpp `server-cuda`, KV cache q4_0, `--ub
 
 ### 1. KV Cache for Hybrid/Recurrent Models
 
-**Background**: Qwen3.5 uses a hybrid architecture with 30 Gated DeltaNet (linear attention, recurrent) layers + 10 full attention layers. Early llama.cpp versions had broken cache reuse for this architecture - every request triggered full prompt re-processing ("forcing full prompt re-processing due to lack of cache data").
+**Background**: Qwen3.6 uses a hybrid architecture with 30 Gated DeltaNet (linear attention, recurrent) layers + 10 full attention layers. Early llama.cpp versions had broken cache reuse for this architecture - every request triggered full prompt re-processing ("forcing full prompt re-processing due to lack of cache data").
 
-**Root Cause**: The checkpoint validation logic used `n_swa = max(1, llama_model_n_swa(model))`. Since Qwen3.5 has no SWA (`sliding_window` is null), `n_swa` defaulted to 1. The GDN recurrent state pushed `pos_min` to the end of the sequence, so `pos_min > n_swa` was always true, discarding the cache.
+**Root Cause**: The checkpoint validation logic used `n_swa = max(1, llama_model_n_swa(model))`. Since Qwen3.6 has no SWA (`sliding_window` is null), `n_swa` defaulted to 1. The GDN recurrent state pushed `pos_min` to the end of the sequence, so `pos_min > n_swa` was always true, discarding the cache.
 
 **Status**: **FIXED** in upstream llama.cpp via two PRs:
 - [#16382](https://github.com/ggml-org/llama.cpp/pull/16382) (2025-10-03): "context checkpointing for hybrid and recurrent models"
@@ -253,7 +255,7 @@ Measured on NVIDIA L4 (24GB VRAM), llama.cpp `server-cuda`, KV cache q4_0, `--ub
 
 **Symptom**: Setting `response_format: {"type": "json_object"}` still produces markdown-fenced output (````json ... ````).
 
-**Root Cause**: Grammar enforcement doesn't work properly with Qwen3.5's chat template. Related: [#20345](https://github.com/ggml-org/llama.cpp/issues/20345).
+**Root Cause**: Grammar enforcement doesn't work properly with Qwen3.6's chat template. Related: [#20345](https://github.com/ggml-org/llama.cpp/issues/20345).
 
 **Workaround**: Strip markdown fences and `<think>` tags in your client code:
 ```python
@@ -271,7 +273,7 @@ def clean_response(content: str) -> str:
 
 **Symptom**: Long JSON responses get cut off mid-string, causing parse failures.
 
-**Root Cause**: `max_tokens` limit reached before the JSON array is complete. Qwen3.5's tokenizer uses more tokens for non-Latin scripts (Hindi, Korean, etc.).
+**Root Cause**: `max_tokens` limit reached before the JSON array is complete. Qwen3.6's tokenizer uses more tokens for non-Latin scripts (Hindi, Korean, etc.).
 
 **Workaround**: Implement truncated JSON recovery:
 ```python
@@ -296,6 +298,8 @@ def parse_json_list(content: str) -> list | None:
 
 - Default: **disabled** via `--chat-template-kwargs '{"enable_thinking": false}'`
 - To enable per-request: set `enable_thinking: true` in the request body
+- Qwen3.6 adds `preserve_thinking` option: when true, think blocks from history are preserved in context (useful for agentic/multi-step tasks)
+- Qwen3.6 **no longer supports** `/think` and `/nothink` soft-switch tokens from Qwen3.5; use `enable_thinking` parameter instead
 - When thinking is enabled, grammar/structured output is completely bypassed ([#20345](https://github.com/ggml-org/llama.cpp/issues/20345))
 - On Windows, use: `--chat-template-kwargs "{\"enable_thinking\":false}"`
 
@@ -325,7 +329,7 @@ def parse_json_list(content: str) -> list | None:
 
 - Using `ghcr.io/ggml-org/llama.cpp:server-cuda` (latest)
 - Tested version: 2026-03-13 build (includes hybrid cache fixes #16382 + #19045)
-- **Must use builds from 2026-01-25 or later** to get working KV cache for Qwen3.5
+- **Must use builds from 2026-01-25 or later** to get working KV cache for Qwen3.6
 - Older images will trigger full prompt re-processing on every turn
 
 ### 9. Open WebUI Connection
@@ -338,9 +342,10 @@ def parse_json_list(content: str) -> list | None:
 
 | Property | Value |
 |----------|-------|
-| Model | Qwen3.5-35B-A3B-Uncensored (HauhauCS Aggressive) |
-| Quantization | Q4_K_M |
-| File size | 20 GB model + 858 MB mmproj |
+| Model | Qwen3.6-35B-A3B |
+| Source | unsloth/Qwen3.6-35B-A3B-GGUF |
+| Quantization | Q4_K_XL (Unsloth Dynamic 2.0) |
+| File size | ~20 GB model + 858 MB mmproj |
 | Multimodal | Yes (via mmproj vision projector, f16) |
 | Architecture | Hybrid: 30x Gated DeltaNet + 10x Gated Attention (MoE, 256 experts, 8 active) |
 | Layer pattern | 10 x (3 x GDN-MoE + 1 x GA-MoE) |
